@@ -1,0 +1,15 @@
+asgiref
+Django
+djangorestframework
+setuptools
+sqlparse
+typing_extensions
+wheel
+psycopg2-binary
+newsapi-python
+cohere
+transformers
+torch
+accelerate
+sentencepiece
+protobuf
