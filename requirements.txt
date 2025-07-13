@@ -13,3 +13,8 @@ torch
 accelerate
 sentencepiece
 protobuf
+pgvector
+google-generativeai
+google-genai
+streamlit
+pandas

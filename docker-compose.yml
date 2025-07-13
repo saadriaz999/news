@@ -1,10 +1,9 @@
-version: "3.8"
+version: '3.9'
 
 services:
   db:
-    image: postgres:15
+    image: ankane/pgvector
     container_name: postgres_db
-    restart: always
     environment:
       POSTGRES_DB: mydatabase
       POSTGRES_USER: myuser

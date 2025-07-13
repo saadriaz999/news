@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from pgvector.django import VectorField
 
 class Article(models.Model):
     title = models.CharField(max_length=255, default='Untitled Article')
@@ -9,6 +10,11 @@ class Article(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class Embedding(models.Model):
+    article_id = models.IntegerField()
+    embedding = VectorField(dimensions=768)
 
 
 class Summary(models.Model):
