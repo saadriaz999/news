@@ -18,3 +18,4 @@ google-generativeai
 google-genai
 streamlit
 pandas
+kafka-python

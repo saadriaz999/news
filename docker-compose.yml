@@ -1,6 +1,38 @@
 version: '3.9'
 
 services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    depends_on:
+      - zookeeper
+
+  #  kafka:
+#    image: confluentinc/cp-kafka:7.6.0
+#    ports:
+#      - "9092:9092"
+#    environment:
+#      KAFKA_BROKER_ID: 1
+#      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+#      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+#      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092
+#      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#    depends_on:
+#      - zookeeper
+
+  # Your app Postgres with pgvector
   db:
     image: ankane/pgvector
     container_name: postgres_db
@@ -13,5 +45,89 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
+  # Airflow metadata Postgres
+  airflow_postgres:
+    image: postgres:13
+    container_name: airflow_postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_pg_data:/var/lib/postgresql/data
+
+  airflow-webserver:
+    image: apache/airflow:2.8.1
+    container_name: airflow_web
+    restart: always
+    depends_on:
+      - airflow_postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_postgres/airflow
+      AIRFLOW__WEBSERVER__SECRET_KEY: 'b4007bf7d4591a839a01b7b1bab251f3a5afef03f7797e1373aaafa2c4f0'
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data_pipeline/dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./data_pipeline/kafka:/opt/airflow/kafka
+      - ./data_pipeline/requirements.txt:/requirements.txt
+    command: >
+      bash -c "pip install -r /requirements.txt && airflow webserver"
+
+  airflow-scheduler:
+    image: apache/airflow:2.8.1
+    container_name: airflow_scheduler
+    restart: always
+    depends_on:
+      - airflow_postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    volumes:
+      - ./data_pipeline/dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./data_pipeline/kafka:/opt/airflow/kafka
+      - ./data_pipeline/requirements.txt:/requirements.txt
+    command: >
+      bash -c "pip install -r /requirements.txt && airflow scheduler"
+
+  airflow-init:
+    image: apache/airflow:2.8.1
+    container_name: airflow_init
+    depends_on:
+      - airflow_postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_postgres/airflow
+    volumes:
+      - ./data_pipeline/dags:/opt/airflow/dags
+      - ./logs:/opt/airflow/logs
+      - ./plugins:/opt/airflow/plugins
+      - ./data_pipeline/kafka:/opt/airflow/kafka
+      - ./data_pipeline/requirements.txt:/requirements.txt
+    entrypoint: /bin/bash
+    command: >
+      -c "pip install -r /requirements.txt &&
+          airflow db init &&
+          airflow users create --username admin --password admin --firstname Saad --lastname User --role Admin --email admin@example.com"
+
+  kafka-consumer:
+    image: python:3.11
+    volumes:
+      - ./data_pipeline/kafka:/app
+    working_dir: /app
+    command: >
+      bash -c "pip install kafka-python && python news_consumer.py"
+    restart: always
+    depends_on:
+      - kafka
+
 volumes:
   postgres_data:
+  airflow_pg_data:
