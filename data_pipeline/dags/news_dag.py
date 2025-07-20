@@ -1,10 +1,10 @@
+import pendulum
 from airflow import DAG
 from airflow.operators.bash import BashOperator
-from datetime import datetime, timedelta
-from pendulum import timezone
+from datetime import timedelta
 
 
-local_tz = timezone("America/Chicago")
+local_tz = pendulum.timezone("America/Chicago")
 dynamic_start = pendulum.now(local_tz).subtract(minutes=1)
 
 default_args = {
