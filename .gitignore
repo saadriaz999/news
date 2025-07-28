@@ -1,2 +1,4 @@
-/venv/
-/logs/
+/django-backend/venv/
+/django-backend/logs/
+/django-backend/__pycache__/
+/django-backend/Articles/migrations/__pycache__/

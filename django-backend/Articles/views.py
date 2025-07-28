@@ -84,13 +84,11 @@ class GenerateEmbeddingView(APIView):
     """
 
     def post(self, request, *args, **kwargs):
-        print('hello')
         article_id = request.data.get("article_id")
         try:
             article = Article.objects.get(id=article_id)
         except Article.DoesNotExist:
             return Response({"error": "Article not found."}, status=status.HTTP_404_NOT_FOUND)
-        print('content', article)
 
         try:
             result = GEMINI_CLIENT.models.embed_content(
@@ -126,7 +124,6 @@ class NewsQueryView(APIView):
                 return Response({"error": "No articles found in that date range."}, status=status.HTTP_404_NOT_FOUND)
 
             article_ids = list(articles.values_list("id", flat=True))
-            print(article_ids)
 
             # Get query embedding via Gemini
             result = GEMINI_CLIENT.models.embed_content(
@@ -169,7 +166,6 @@ class NewsQueryView(APIView):
             
             ONLY output the answer. Do not include any extra text.
             """
-            print(prompt)
 
             gemini_response = GEMINI_CLIENT.models.generate_content(
                 model="gemini-2.5-flash",

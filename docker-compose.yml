@@ -1,11 +1,64 @@
 version: '3.9'
 
 services:
+
+  # main backend postgres database
+  db:
+    image: ankane/pgvector
+    container_name: postgres_db
+    environment:
+      POSTGRES_DB: mydatabase
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # python django backend
+  django:
+    image: python:3.11
+    container_name: django_app
+    command: >
+      bash -c "pip install -r requirements.txt &&
+               python manage.py migrate &&
+               python manage.py runserver 0.0.0.0:8000"
+    volumes:
+      - ./django-backend:/app
+    working_dir: /app
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - DB_NAME=mydatabase
+      - DB_USER=myuser
+      - DB_PASSWORD=mypassword
+      - DB_HOST=db
+      - DB_PORT=5432
+
+  # stream lit UI
+  streamlit:
+    image: python:3.11
+    container_name: streamlit
+    working_dir: /app
+    volumes:
+      - ./streamlit-ui:/app
+    ports:
+      - "8501:8501"
+    depends_on:
+      - django  # if needed, or remove if not dependent
+    command: >
+      bash -c "pip install --no-cache-dir -r requirements.txt &&
+               streamlit run streamlit-ui.py --server.port=8501 --server.address=0.0.0.0"
+
+  # kafka dependency
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
 
+  # kafka
   kafka:
     image: confluentinc/cp-kafka:7.6.0
     ports:
@@ -19,20 +72,7 @@ services:
     depends_on:
       - zookeeper
 
-  # Your app Postgres with pgvector
-  db:
-    image: ankane/pgvector
-    container_name: postgres_db
-    environment:
-      POSTGRES_DB: mydatabase
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypassword
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  # Airflow metadata Postgres
+  # airflow database
   airflow_postgres:
     image: postgres:13
     container_name: airflow_postgres
@@ -43,6 +83,7 @@ services:
     volumes:
       - airflow_pg_data:/var/lib/postgresql/data
 
+  # airflow ui
   airflow-webserver:
     image: apache/airflow:2.8.1
     container_name: airflow_web
@@ -65,6 +106,7 @@ services:
     command: >
       bash -c "pip install -r /requirements.txt && airflow webserver"
 
+  # airflow backend
   airflow-scheduler:
     image: apache/airflow:2.8.1
     container_name: airflow_scheduler
@@ -84,6 +126,7 @@ services:
     command: >
       bash -c "pip install -r /requirements.txt && airflow scheduler"
 
+  # airflow setup
   airflow-init:
     image: apache/airflow:2.8.1
     container_name: airflow_init
@@ -104,6 +147,7 @@ services:
           airflow db init &&
           airflow users create --username admin --password admin --firstname Saad --lastname User --role Admin --email admin@example.com"
 
+  # spark
   spark:
     image: bitnami/spark:3.3
     container_name: spark
@@ -120,17 +164,6 @@ services:
     command: ["bash", "/opt/spark/start_spark.sh"]
     depends_on:
       - kafka
-
-#  kafka-consumer:
-#    image: python:3.11
-#    volumes:
-#      - ./data_pipeline/kafka:/app
-#    working_dir: /app
-#    command: >
-#      bash -c "pip install kafka-python && python news_consumer.py"
-#    restart: always
-#    depends_on:
-#      - kafka
 
 volumes:
   postgres_data:

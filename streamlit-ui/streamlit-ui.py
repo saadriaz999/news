@@ -3,7 +3,7 @@ import streamlit as st
 
 st.set_page_config(page_title="MyNews", page_icon="🗞️")
 
-st.title("📰 MyNews – News Answer Assistant")
+st.title("📰 MyNews")
 
 # Session State
 if "messages" not in st.session_state:
@@ -29,21 +29,20 @@ if user_input := st.chat_input("Ask a question based on recent news"):
     st.session_state.messages.append({"role": "user", "content": user_input})
 
     # Call the Django backend
-    try:
-        response = requests.post(
-            "http://localhost:8000/articles/query/",
-            json={"date_range": date_range_days, "query": user_input},
-            timeout=30
-        )
-        if response.status_code == 200:
-            answer = response.json().get("answer", "No response.")
-        else:
-            answer = f"❌ Error from API: {response.json().get('error', 'Unknown error')}"
-
-    except Exception as e:
-        answer = f"❌ Failed to connect to backend: {e}"
-
-    # Show assistant response
     with st.chat_message("assistant"):
+        with st.spinner("🤔 Thinking..."):
+            try:
+                response = requests.post(
+                    "http://django:8000/articles/query/",
+                    json={"date_range": date_range_days, "query": user_input},
+                    timeout=30
+                )
+                if response.status_code == 200:
+                    answer = response.json().get("answer", "No response.")
+                else:
+                    answer = f"❌ Error from API: {response.json().get('error', 'Unknown error')}"
+            except Exception as e:
+                answer = f"❌ Failed to connect to backend: {e}"
+
         st.markdown(answer)
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+        st.session_state.messages.append({"role": "assistant", "content": answer})
