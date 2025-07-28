@@ -1,20 +1,19 @@
-import os
-import cohere
+import numpy as np
+from google import genai
 from rest_framework import generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.utils import timezone
+from django.db.models import F
+from pgvector.django import CosineDistance
 from datetime import timedelta
-from transformers import T5Tokenizer, T5ForConditionalGeneration
 
-from .models import Article, Summary
+from .models import Article, Summary, Embedding
 from .serializers import ArticleSerializer
-from .utils import get_previous_day_articles_by_category, summarize_content
-from Summarizer.settings import BASE_DIR
+from .utils import get_previous_day_articles_by_category
 
-
-co = cohere.Client("MIfT9OBEe6PdyxOUgZXJJ7iN5dgI5ZLcUosBrb99")
+GEMINI_CLIENT = genai.Client(api_key="AIzaSyC3DCjjQV2_dUP_tg7Wrt8Kr5QUIg6ifaE")
 
 # List and Create Articles
 class ArticleListCreateView(generics.ListCreateAPIView):
@@ -48,80 +47,137 @@ class ArticleFetchView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class GenerateSummariesView(APIView):
+class GenerateSummaryView(APIView):
     """
-    Generates summaries for articles that don't already have a summary,
-    based on raw article_id (no foreign key).
-    """
-
-    def post(self, request, *args, **kwargs):
-        existing_article_ids = Summary.objects.values_list('article_id', flat=True)
-        articles_without_summary = Article.objects.exclude(id__in=existing_article_ids)
-
-        path = os.path.join(BASE_DIR, "media", "ml_models", "flan-t5-small-cnn_dailymail")
-        model = T5ForConditionalGeneration.from_pretrained(path)
-        tokenizer = T5Tokenizer.from_pretrained(path)
-
-        created_count = 0
-        for article in articles_without_summary:
-            summary_text = summarize_content(article.content, model, tokenizer)
-            Summary.objects.create(article_id=article.id, summary=summary_text)
-            created_count += 1
-
-        return Response({
-            "message": "Summaries generated successfully.",
-            "summaries_created": created_count
-        }, status=status.HTTP_200_OK)
-
-
-class DailyAICompiledSummaryView(APIView):
-    """
-    Takes user preferences, gets summaries of matching previous day's articles,
-    generates a prompt, and sends it to Cohere for a summarized response.
+    Takes article_id, generates a summary using Gemini, and saves it in the Summary table.
     """
 
     def post(self, request, *args, **kwargs):
-        preferences = request.data.get('preferences', [])
-
-        if not preferences:
-            return Response({"error": "Preferences list is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        # Get yesterday's date
-        yesterday = timezone.now().date() - timedelta(days=2)
-
-        # Get article IDs from yesterday matching preferences
-        articles = Article.objects.filter(category__in=preferences)
-        article_ids = articles.values_list('id', flat=True)
-
-        # Get corresponding summaries
-        summaries = Summary.objects.filter(article_id__in=article_ids).values_list('summary', flat=True)
-
-        if not summaries:
-            return Response({"message": "No summaries found for the given preferences."}, status=status.HTTP_404_NOT_FOUND)
-
-        # Build the prompt
-        summaries_text = "\n\n".join(summaries)
-        prompt = (
-            "You are an AI News summarizer that will create a daily summary using the following summaries:\n\n"
-            f"{summaries_text}\n\n"
-            "Using the above summaries of articles, make a daily summary of about 100 words. "
-            "You can merge content of different summaries into the same sentence if you find that appropriate. "
-            "Only give the summary as output nothing else."
-        )
-
-        # Call Cohere
+        article_id = request.data.get("article_id")
         try:
-            response = co.generate(
-                model="command",  # or "command-light" if you want a smaller model
-                prompt=prompt,
-                max_tokens=300,
-                temperature=0.7
-            )
-            summary_result = response.generations[0].text.strip()
-        except Exception as e:
-            return Response({"error": f"Failed to generate summary: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            article = Article.objects.get(id=article_id)
+        except Article.DoesNotExist:
+            return Response({"error": "Article not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({
-            "prompt": prompt,
-            "generated_summary": summary_result
-        }, status=status.HTTP_200_OK)
+        prompt = f"""
+        Generate a summary of the following news article:
+
+        Article: {article.content}
+
+        ONLY output the summary.
+        """
+        try:
+            response = GEMINI_CLIENT.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+            summary_text = response.text.strip()
+            Summary.objects.create(article_id=article.id, summary=summary_text)
+            return Response({"summary": summary_text}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class GenerateEmbeddingView(APIView):
+    """
+    Takes article_id, generates embedding using Gemini, and saves it in the Embedding table.
+    """
+
+    def post(self, request, *args, **kwargs):
+        print('hello')
+        article_id = request.data.get("article_id")
+        try:
+            article = Article.objects.get(id=article_id)
+        except Article.DoesNotExist:
+            return Response({"error": "Article not found."}, status=status.HTTP_404_NOT_FOUND)
+        print('content', article)
+
+        try:
+            result = GEMINI_CLIENT.models.embed_content(
+                model="models/text-embedding-004",
+                contents=[article.content],
+            )
+            embedding_vector = result.embeddings[0].values
+            Embedding.objects.create(article_id=article.id, embedding=embedding_vector)
+            return Response({"message": "Embedding saved successfully."}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+class NewsQueryView(APIView):
+    """
+    Accepts date_range (1 or 7) and a query.
+    Filters articles by date, finds top-K similar using pgvector cosine distance,
+    fetches summaries, and uses Gemini to answer the query.
+    """
+
+    def post(self, request, *args, **kwargs):
+        date_range = request.data.get("date_range")
+        query = request.data.get("query")
+
+        if not query or date_range not in [1, 7]:
+            return Response({"error": "Invalid input. Provide 'query' and 'date_range' (1 or 7)."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Filter recent articles
+            since_date = timezone.now().date() - timedelta(days=date_range)
+            articles = Article.objects.filter(date__gte=since_date)
+
+            if not articles.exists():
+                return Response({"error": "No articles found in that date range."}, status=status.HTTP_404_NOT_FOUND)
+
+            article_ids = list(articles.values_list("id", flat=True))
+            print(article_ids)
+
+            # Get query embedding via Gemini
+            result = GEMINI_CLIENT.models.embed_content(
+                model="models/text-embedding-004",
+                contents=[query],
+            )
+            query_vector = result.embeddings[0].values
+
+            # Use pgvector to get top-K similar embeddings
+            K = 5
+            similar_embeddings = (
+                Embedding.objects
+                .filter(article_id__in=article_ids)
+                .annotate(distance=CosineDistance(F("embedding"), query_vector))
+                .order_by("distance")[:K]
+            )
+
+            if not similar_embeddings:
+                return Response({"error": "No similar articles found."}, status=status.HTTP_404_NOT_FOUND)
+
+            top_k_ids = [e.article_id for e in similar_embeddings]
+
+            # Fetch summaries
+            summaries = Summary.objects.filter(article_id__in=top_k_ids)
+
+            if not summaries.exists():
+                return Response({"error": "No summaries found for similar articles."}, status=status.HTTP_404_NOT_FOUND)
+
+            combined_summaries = "\n\n".join([s.summary for s in summaries])
+
+            # Construct prompt and query Gemini
+            prompt = f"""
+            Use ONLY the following news article summaries to answer the user query.
+            
+            News Summaries:
+            {combined_summaries}
+            
+            User Query:
+            {query}
+            
+            ONLY output the answer. Do not include any extra text.
+            """
+            print(prompt)
+
+            gemini_response = GEMINI_CLIENT.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+            answer = gemini_response.text.strip()
+
+            return Response({"answer": answer}, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

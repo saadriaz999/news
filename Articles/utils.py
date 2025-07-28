@@ -46,11 +46,3 @@ def get_previous_day_articles_by_category(categories, n=10):
     return results  # Return the results for reference if needed
 
 
-def summarize_content(content, model, tokenizer):
-    input_text = "summarize: " + content
-    inputs = tokenizer(input_text, return_tensors="pt", max_length=1000, truncation=True)
-
-    summary_ids = model.generate(inputs.input_ids, max_length=150, min_length=30, length_penalty=2.0, num_beams=1)
-    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
-
-    return summary

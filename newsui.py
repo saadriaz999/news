@@ -1,15 +1,4 @@
 import streamlit as st
-# import numpy as np
-# from sklearn.metrics.pairwise import cosine_similarity
-# import cohere
-# import ast
-import pandas as pd
-
-
-# Load in the dataframe from S3 containing the csv file that contains our current news data
-# this is neccessary primarily for performance reasons
-
-# df_news = pd.read_csv('news_data.csv)')
 
 
 
@@ -29,13 +18,6 @@ import pandas as pd
 
 
 def get_top_k_similar_articles(query, df, k=3):
-    # query_embedding = np.array(generate_embedding(query)).reshape((1, -1))
-    # df_filtered = df[df['Embedding'].notnull()].copy()
-    # embeddings = np.stack(df_filtered['Embedding'].values)
-    # similarities = cosine_similarity(query_embedding, embeddings).flatten()
-    # df_filtered['Similarity'] = similarities
-    # top_k = df_filtered.sort_values('Similarity', ascending=False).head(k)
-    # return top_k
     return ['a1', 'a2', 'a3']
 
 
