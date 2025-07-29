@@ -53,7 +53,7 @@ News API → Kafka → Spark → Postgres (pgvector)
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/mynews-pipeline.git
+git clone https://github.com/saadriaz999/news
 cd mynews-pipeline
 ```
 
