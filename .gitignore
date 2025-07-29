@@ -2,3 +2,5 @@
 /django-backend/logs/
 /django-backend/__pycache__/
 /django-backend/Articles/migrations/__pycache__/
+/.idea/
+/.DS_Store/
