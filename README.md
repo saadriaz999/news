@@ -54,7 +54,7 @@ News API → Kafka → Spark → Postgres (pgvector)
 
 ```bash
 git clone https://github.com/saadriaz999/news
-cd mynews-pipeline
+cd news
 ```
 
 ### 2. Start the Entire System with Docker Compose
