@@ -81,13 +81,14 @@ mynews/
 ├── data_pipeline/
 │   ├── dags/               # Airflow DAGs
 │   ├── kafka/              # Kafka producer/consumer
+|   ├── spark/              # Spark setup files
 │   ├── spark_app/          # Spark summarization/embedding
 │   └── requirements.txt
 ├── django_backend/
-│   ├── articles/           # Django app for news query API
-│   └── mynews_backend/     # Django project settings
+│   ├── Articles/           # Django app for news query API
+│   └── Summarizer/         # Django project settings
 ├── streamlit_app/
-│   └── app.py              # Streamlit chatbot frontend
+│   └── streamlit-ui.py     # Streamlit chatbot frontend
 ├── docker-compose.yml
 └── README.md
 ```
