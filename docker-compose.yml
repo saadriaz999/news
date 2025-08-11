@@ -20,7 +20,8 @@ services:
     image: python:3.11
     container_name: django_app
     command: >
-      bash -c "pip install -r requirements.txt &&
+      bash -c "python -m pip install --upgrade pip &&
+               pip install --no-cache-dir -r requirements.txt &&
                python manage.py migrate &&
                python manage.py runserver 0.0.0.0:8000"
     volumes:
@@ -47,10 +48,11 @@ services:
     ports:
       - "8501:8501"
     depends_on:
-      - django  # if needed, or remove if not dependent
+      - django
     command: >
-      bash -c "pip install --no-cache-dir -r requirements.txt &&
-               streamlit run streamlit-ui.py --server.port=8501 --server.address=0.0.0.0"
+      sh -c "python -m pip install --upgrade pip &&
+             pip install --no-cache-dir -r requirements.txt &&
+             streamlit run streamlit-ui.py --server.port=8501 --server.address=0.0.0.0"
 
   # kafka dependency
   zookeeper:
@@ -71,6 +73,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
     depends_on:
       - zookeeper
+      - django
 
   # airflow database
   airflow_postgres:
@@ -90,6 +93,7 @@ services:
     restart: always
     depends_on:
       - airflow_postgres
+      - kafka
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_postgres/airflow
@@ -113,6 +117,7 @@ services:
     restart: always
     depends_on:
       - airflow_postgres
+      - kafka
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_postgres/airflow
@@ -132,6 +137,7 @@ services:
     container_name: airflow_init
     depends_on:
       - airflow_postgres
+      - kafka
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_postgres/airflow
@@ -155,13 +161,14 @@ services:
       - "7077:7077"   # Spark master port
       - "4040:4040"   # Spark UI
     volumes:
-      - ./data_pipeline/spark_app:/opt/spark/app
-      - ./data_pipeline/spark/jars:/opt/spark/jars/hadoop
+      - ./data_pipeline/requirements.txt:/requirements.txt
+      - ./data_pipeline/spark:/opt/spark/app
+      - ./data_pipeline/spark_files/jars:/opt/spark/jars/hadoop
       - ./data_pipeline/spark/start_spark.sh:/opt/spark/start_spark.sh
     working_dir: /app
     environment:
       - SPARK_MODE=master
-    command: ["bash", "/opt/spark/start_spark.sh"]
+    command: [ "bash", "-c", "pip install -r /requirements.txt && bash /opt/spark/start_spark.sh" ]
     depends_on:
       - kafka
 

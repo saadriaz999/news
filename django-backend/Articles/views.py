@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from .models import Article, Summary, Embedding
 from .serializers import ArticleSerializer
-from .utils import get_previous_day_articles_by_category
+from .utils import get_articles
 
 GEMINI_CLIENT = genai.Client(api_key="AIzaSyC3DCjjQV2_dUP_tg7Wrt8Kr5QUIg6ifaE")
 
@@ -25,25 +25,23 @@ class ArticleRetrieveUpdateDestroyView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
 
+
 class ArticleFetchView(APIView):
     """
-    This view fetches articles from the previous day for a list of categories,
-    saves them to the database, and returns a success message with the saved articles.
+    Fetches only new articles (title + date uniqueness),
+    saves them, and returns them in the response.
     """
+
     def post(self, request, *args, **kwargs):
-        # Define the categories and API key
-        categories = ['technology', 'health', 'business', 'sports']  # Example categories
+        # categories = ['crypto', 'stocks', 'bonds']
+        days = int(request.data.get("days", 1))
+        n = int(request.data.get("n", 10))
 
-        # Fetch and save the articles using your existing function
-        get_previous_day_articles_by_category(categories)
+        new_article_ids = get_articles(days=days, n=n)
 
-        # Optionally serialize the saved articles
-        serialized_articles = ArticleSerializer(Article.objects.all(), many=True)
-
-        # Return a response with the success message and saved articles
         return Response({
-            "message": "Articles for the previous day have been fetched and saved.",
-            "articles": serialized_articles.data
+            "message": f"{len(new_article_ids)} new articles fetched and saved.",
+            "articles": new_article_ids
         }, status=status.HTTP_200_OK)
 
 

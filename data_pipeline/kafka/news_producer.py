@@ -4,30 +4,32 @@ import requests
 import datetime
 from kafka import KafkaProducer
 
+DJANGO_FETCH_URL = "http://django:8000/articles/fetch/"
 
 producer = KafkaProducer(
     bootstrap_servers=["kafka:9092"],
     value_serializer=lambda v: json.dumps(v).encode("utf-8")
 )
 
-def fetch_news():
-    res = requests.get("https://newsapi.org/v2/top-headlines?country=us&apiKey=ab92986727314bb6ac45748b0061f106")
+def fetch_new_article_ids():
+    res = requests.post(DJANGO_FETCH_URL)
     res.raise_for_status()
-    return res.json().get("articles", [])
+    data = res.json()
+    return data.get("new_article_ids", [])
 
-def send_to_kafka(articles):
-    for article in articles:
-        data = {
-            "title": article["title"],
-            "content": article["content"],
-            "source": article["source"]["name"],
-            "published_at": article["publishedAt"],
-            "pushed_at": str(datetime.datetime.now())
+def send_ids_to_kafka(article_ids):
+    for article_id in article_ids:
+        payload = {
+            "article_id": article_id,
+            "pushed_at": str(datetime.date.today())
         }
-        producer.send("raw_news", value=data)
+        producer.send("raw_news", value=payload)
     producer.flush()
-    print(f"Sent {len(articles)} articles to Kafka")
+    print(f"Sent {len(article_ids)} article IDs to Kafka")
 
 if __name__ == "__main__":
-    articles = fetch_news()
-    send_to_kafka(articles)
+    article_ids = fetch_new_article_ids()
+    if article_ids:
+        send_ids_to_kafka(article_ids)
+    else:
+        print("No new articles to send.")

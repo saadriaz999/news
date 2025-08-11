@@ -20,3 +20,6 @@ streamlit
 pandas
 numpy
 kafka-python
+pydantic
+pydantic_core
+finlight_client

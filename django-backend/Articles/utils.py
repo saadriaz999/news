@@ -1,48 +1,105 @@
 from datetime import datetime, timedelta
 from newsapi import NewsApiClient
-from django.utils import timezone
-from .models import Article  # Import the Article model
+from finlight_client import FinlightApi, ApiConfig
+from finlight_client.models import GetArticlesParams
+from .models import Article
 
-def get_previous_day_articles_by_category(categories, n=10):
-    # Initialize News API client
+def get_articles_news_api(categories, n=10):
+    """
+    Fetches articles for given categories (yesterday),
+    saves only new ones based on (title, date), and returns their IDs.
+    """
     newsapi = NewsApiClient(api_key='ab92986727314bb6ac45748b0061f106')
-
-    # Calculate the previous day's date
     yesterday = datetime.now() - timedelta(1)
     yesterday_date = yesterday.strftime('%Y-%m-%d')
+    date_obj = datetime.strptime(yesterday_date, '%Y-%m-%d').date()
 
-    # Initialize the results dictionary (for logging purposes)
-    results = {}
+    new_article_ids = []
 
-    # Iterate through each category in the list
     for category in categories:
-        # Perform the query for each category
         response = newsapi.get_everything(
-            q=category,  # Use the category as a search term
-            from_param=yesterday_date,  # Start date (yesterday)
-            to=yesterday_date,  # End date (yesterday)
-            language='en',  # English language articles
-            sort_by='publishedAt',  # Sort by published date
-            page_size=100  # Maximum number of articles per request
+            q=category,
+            from_param=yesterday_date,
+            to=yesterday_date,
+            language='en',
+            sort_by='publishedAt',
+            page_size=100
         )
-
-        # Get the articles for this category
         articles = response.get('articles', [])[:n]
 
-        # Store the articles in the results dictionary under the corresponding category
-        results[category] = articles
-
-        # Loop through the articles and save them to the database
         for article_data in articles:
-            # Create or update each article in the database
-            article = Article(
-                title=article_data.get('title', ''),
-                content=article_data.get('content', ''),
+            title = (article_data.get('title') or '').strip()
+            content = article_data.get('content') or ''
+
+            # Skip if already exists
+            if Article.objects.filter(title=title, date=date_obj).exists():
+                continue
+
+            article = Article.objects.create(
+                title=title or "Untitled Article",
+                content=content or "No content available.",
                 category=category,
-                date=datetime.strptime(yesterday_date, '%Y-%m-%d').date()  # Use only the date part
+                date=date_obj
             )
-            article.save()  # Save the article to the database
+            new_article_ids.append(article.id)
 
-    return results  # Return the results for reference if needed
+    return new_article_ids
 
 
+def get_articles(days, n=10):
+    """
+    Fetches the latest articles using the Finlight API,
+    saves only new ones based on (title, date), and returns their IDs.
+    """
+    # 1. Configure and initialize the Finlight API client
+    client = FinlightApi(
+        config=ApiConfig(
+            # It's best practice to store API keys in environment variables
+            # instead of hardcoding them in the source code.
+            api_key="sk_3fb696c232236f089f65533c6818a1846742ee1909137963eab2c9c649533675"
+        )
+    )
+
+    # 2. Set parameters to fetch recent articles with content
+    # We fetch articles from the last day to match the previous logic.
+    yesterday = datetime.now() - timedelta(days=days)
+
+    params = GetArticlesParams(
+        includeContent=True,
+        excludeEmptyContent=True,
+        publishedOnOrAfter=yesterday.strftime('%Y-%m-%d')  # Format date as YYYY-MM-DD string
+    )
+
+    # 3. Fetch articles from the API
+    try:
+        fetched_articles = client.articles.fetch_articles(params=params)
+    except Exception as e:
+        # If the API call fails, print an error and return an empty list.
+        print(f"Error fetching articles from Finlight API: {e}")
+        return []
+
+    new_article_ids = []
+
+    # Limit the number of articles to process, similar to the old function's 'n' parameter
+    articles_to_process = fetched_articles.articles[:n] if fetched_articles.articles else []
+
+    # 4. Process and save new articles
+    for article_data in articles_to_process:
+        title = (article_data.title or '').strip()
+
+        # Skip if an article with the same title and date already exists
+        if Article.objects.filter(title=title, date=article_data.publishDate).exists():
+            continue
+
+        # Create and save the new article
+        article = Article.objects.create(
+            title=title or "Untitled Article",
+            content=article_data.content or "No content available.",
+            # The new API doesn't provide a 'category' field in the same way.
+            # We'll use a default value for now.
+            category='finance',
+            date=article_data.publishDate
+        )
+        new_article_ids.append(article.id)
+
+    return new_article_ids

@@ -8,6 +8,9 @@ class Article(models.Model):
     category = models.CharField(max_length=20, default='General')
     date = models.DateField(default=timezone.now)
 
+    class Meta:
+        unique_together = ('title', 'date')
+
     def __str__(self):
         return self.title
 
