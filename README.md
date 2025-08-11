@@ -53,8 +53,8 @@ News API → Kafka → Spark → Postgres (pgvector)
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/mynews-pipeline.git
-cd mynews-pipeline
+git clone https://github.com/saadriaz999/news
+cd news
 ```
 
 ### 2. Start the Entire System with Docker Compose
@@ -81,13 +81,14 @@ mynews/
 ├── data_pipeline/
 │   ├── dags/               # Airflow DAGs
 │   ├── kafka/              # Kafka producer/consumer
+|   ├── spark/              # Spark setup files
 │   ├── spark_app/          # Spark summarization/embedding
 │   └── requirements.txt
 ├── django_backend/
-│   ├── articles/           # Django app for news query API
-│   └── mynews_backend/     # Django project settings
+│   ├── Articles/           # Django app for news query API
+│   └── Summarizer/         # Django project settings
 ├── streamlit_app/
-│   └── app.py              # Streamlit chatbot frontend
+│   └── streamlit-ui.py     # Streamlit chatbot frontend
 ├── docker-compose.yml
 └── README.md
 ```
